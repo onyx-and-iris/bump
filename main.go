@@ -18,6 +18,12 @@ import (
 
 const version = "0.0.5"
 
+type fileResult struct {
+	file       string
+	newVersion string
+	err        error
+}
+
 type processArgs struct {
 	file       string
 	majorDelta uint64
@@ -109,13 +115,54 @@ func main() {
 			}
 			pargs.re = re
 
-			for _, file := range cmd.StringSlice("file") {
+			files := cmd.StringSlice("file")
+			numFiles := len(files)
+			resultChan := make(chan fileResult, numFiles)
+
+			for _, file := range files {
 				pargs.file = file
-				if err := processFile(pargs, cmd); err != nil {
-					return fmt.Errorf("processing file %q failed: %w", file, err)
+				go processFile(pargs, cmd, resultChan)
+			}
+
+			results := make(map[string]fileResult)
+			for range numFiles {
+				result := <-resultChan
+				results[result.file] = result
+			}
+
+			var errors []error
+			successCount := 0
+
+			for _, file := range files {
+				result := results[file]
+				if result.err != nil {
+					errors = append(errors, fmt.Errorf("%s: %w", file, result.err))
+				} else {
+					if result.newVersion != "" {
+						fmt.Println(result.newVersion)
+					}
+					successCount++
 				}
 			}
 
+			if len(errors) > 0 && successCount > 0 {
+				log.Warnf("Completed with mixed results: %d succeeded, %d failed", successCount, len(errors))
+				for _, err := range errors {
+					log.Errorf("  ✗ %v", err)
+				}
+				return fmt.Errorf("%d files failed to process", len(errors))
+			} else if len(errors) > 0 {
+				log.Errorf("All %d files failed to process", len(errors))
+				for _, err := range errors {
+					log.Errorf("  ✗ %v", err)
+				}
+				if len(errors) == 1 {
+					return errors[0]
+				}
+				return fmt.Errorf("failed to process %d files", len(errors))
+			} else {
+				log.Infof("Successfully processed all %d files", successCount)
+			}
 			return nil
 		},
 	}
@@ -125,16 +172,18 @@ func main() {
 	}
 }
 
-func processFile(pargs processArgs, cmd *cli.Command) error {
+func processFile(pargs processArgs, cmd *cli.Command, resultChan chan<- fileResult) {
 	log.Debugf("Processing file: %s", pargs.file)
 	content, err := os.ReadFile(pargs.file)
 	if err != nil {
-		return err
+		resultChan <- fileResult{file: pargs.file, err: err}
+		return
 	}
 
 	loc := pargs.re.FindSubmatchIndex(content)
 	if loc == nil {
-		return errors.New("pattern did not match")
+		resultChan <- fileResult{file: pargs.file, err: errors.New("pattern did not match")}
+		return
 	}
 
 	// loc[2], loc[3] are the start and end of the first capture group
@@ -142,14 +191,16 @@ func processFile(pargs processArgs, cmd *cli.Command) error {
 
 	if pargs.showOnly {
 		fmt.Println(currentVersion)
-		return nil
+		resultChan <- fileResult{file: pargs.file, err: nil}
+		return
 	}
 
 	if pargs.prompt {
 		result, err := promptTarget(currentVersion, pargs.file)
 		if err != nil {
 			if !cmd.Bool("yes") {
-				return err
+				resultChan <- fileResult{file: pargs.file, err: err}
+				return
 			}
 			pargs.patchDelta = 1
 		} else {
@@ -166,7 +217,8 @@ func processFile(pargs processArgs, cmd *cli.Command) error {
 
 	newVersion, err := bumpVersion(currentVersion, pargs)
 	if err != nil {
-		return fmt.Errorf("version bump failed: %w", err)
+		resultChan <- fileResult{file: pargs.file, err: fmt.Errorf("version bump failed: %w", err)}
+		return
 	}
 
 	result := make([]byte, 0, len(content)+len(newVersion)-len(currentVersion))
@@ -176,14 +228,15 @@ func processFile(pargs processArgs, cmd *cli.Command) error {
 
 	if cmd.Bool("write") {
 		if err := os.WriteFile(pargs.file, result, 0644); err != nil {
-			return err
+			resultChan <- fileResult{file: pargs.file, err: err}
+			return
 		}
-		fmt.Println(newVersion)
 		log.Debugf("File %q updated successfully", pargs.file)
+		resultChan <- fileResult{file: pargs.file, newVersion: newVersion, err: nil}
 	} else {
 		fmt.Println(string(result))
+		resultChan <- fileResult{file: pargs.file, err: nil}
 	}
-	return nil
 }
 
 func bumpVersion(version string, pargs processArgs) (string, error) {
