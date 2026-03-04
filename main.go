@@ -117,6 +117,13 @@ func main() {
 
 			files := cmd.StringSlice("file")
 			numFiles := len(files)
+
+			if numFiles > 1 && pargs.prompt {
+				return errors.New(
+					"prompt mode (up) is not supported for multiple files. Use 'major', 'minor', or 'patch' instead",
+				)
+			}
+
 			resultChan := make(chan fileResult, numFiles)
 
 			for _, file := range files {
