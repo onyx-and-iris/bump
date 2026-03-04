@@ -29,6 +29,11 @@ type processArgs struct {
 	re         *regexp.Regexp
 }
 
+func (pa processArgs) SafeString() string {
+	return fmt.Sprintf("processArgs{majorDelta:%d, minorDelta:%d, patchDelta:%d, exact:%q, showOnly:%t, prompt:%t}",
+		pa.majorDelta, pa.minorDelta, pa.patchDelta, pa.exact, pa.showOnly, pa.prompt)
+}
+
 func main() {
 	cli.VersionPrinter = func(cmd *cli.Command) {
 		fmt.Printf("bump version: %s\n", cmd.Root().Version)
@@ -57,36 +62,43 @@ func main() {
 				Name: "yes", Aliases: []string{"y"},
 				Usage: "skip prompt and use patch (for non-interactive environments)",
 			},
+			&cli.StringFlag{
+				Name: "loglevel", Aliases: []string{"l"},
+				Usage: "Set the logging level (debug, info, warn, error, fatal, panic).",
+				Value: "info",
+			},
+		},
+		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
+			level, err := log.ParseLevel(cmd.String("loglevel"))
+			if err != nil {
+				return nil, fmt.Errorf("invalid log level: %w", err)
+			}
+			log.SetLevel(level)
+			return ctx, nil
 		},
 		Action: func(_ context.Context, cmd *cli.Command) error {
-			var (
-				majorDelta uint64
-				minorDelta uint64
-				patchDelta uint64
-				exact      string
-				showOnly   bool
-				prompt     bool
-			)
+			var pargs processArgs
 
 			switch cmd.Args().First() {
 			case "major":
-				majorDelta = 1
+				pargs.majorDelta = 1
 			case "minor":
-				minorDelta = 1
+				pargs.minorDelta = 1
 			case "patch":
-				patchDelta = 1
+				pargs.patchDelta = 1
 			case "up":
-				prompt = true
+				pargs.prompt = true
 			case "show":
-				showOnly = true
+				pargs.showOnly = true
 			case "set":
 				if cmd.Args().Len() < 2 {
 					return errors.New("please specify a version to set")
 				}
-				exact = cmd.Args().Get(1)
+				pargs.exact = cmd.Args().Get(1)
 			default:
 				return fmt.Errorf("unknown subcommand %q", cmd.Args().First())
 			}
+			log.Debugf("Configuration: %s", pargs.SafeString())
 
 			re, err := regexp.Compile(cmd.String("pattern"))
 			if err != nil {
@@ -95,16 +107,7 @@ func main() {
 			if re.NumSubexp() < 1 {
 				return errors.New("pattern must contain at least one capture group for the version")
 			}
-
-			pargs := processArgs{
-				majorDelta: majorDelta,
-				minorDelta: minorDelta,
-				patchDelta: patchDelta,
-				exact:      exact,
-				showOnly:   showOnly,
-				prompt:     prompt,
-				re:         re,
-			}
+			pargs.re = re
 
 			for _, file := range cmd.StringSlice("file") {
 				pargs.file = file
@@ -123,6 +126,7 @@ func main() {
 }
 
 func processFile(pargs processArgs, cmd *cli.Command) error {
+	log.Debugf("Processing file: %s", pargs.file)
 	content, err := os.ReadFile(pargs.file)
 	if err != nil {
 		return err
@@ -175,6 +179,7 @@ func processFile(pargs processArgs, cmd *cli.Command) error {
 			return err
 		}
 		fmt.Println(newVersion)
+		log.Debugf("File %q updated successfully", pargs.file)
 	} else {
 		fmt.Println(string(result))
 	}
