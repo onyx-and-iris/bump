@@ -44,20 +44,6 @@ tasks:
     cmds:
       - go fmt ./...
 
-  integration-test:
-    desc: Run tests
-    deps: [docker-up]
-    cmds:
-      - go run ./cmd/{{.PROGRAM}} --hostname=${HOSTNAME} --ports="28960" --loglevel=trace --ratelimit=5
-      - docker compose down
-
-  docker-up:
-    desc: Run the Docker compose stack
-    cmds:
-      - docker-compose up -d
-      - sleep 3
-    internal: true
-
   clean:
     desc: Clean the build artifacts
     cmds:
