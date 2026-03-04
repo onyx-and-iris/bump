@@ -9,7 +9,7 @@ Inspired by [gobump](https://github.com/x-motemen/gobump), but works with any fi
 ## Installation
 
 ```
-go install github.com/mattn/bump@latest
+go install github.com/onyx-and-iris/bump@latest
 ```
 
 ## Usage

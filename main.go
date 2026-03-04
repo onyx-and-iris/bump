@@ -1,8 +1,8 @@
 package main
 
 import (
+	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -11,112 +11,126 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/manifoldco/promptui"
 	"github.com/mattn/go-tty"
+
+	"github.com/charmbracelet/log"
+	"github.com/urfave/cli/v3"
 )
 
 const version = "0.0.5"
 
+type processArgs struct {
+	file       string
+	pattern    string
+	majorDelta uint64
+	minorDelta uint64
+	patchDelta uint64
+	exact      string
+	showOnly   bool
+	prompt     bool
+	re         *regexp.Regexp
+}
+
 func main() {
-	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	cli.VersionPrinter = func(cmd *cli.Command) {
+		fmt.Printf("bump version: %s\n", cmd.Root().Version)
+	}
+
+	cmd := &cli.Command{
+		Name:    "bump",
+		Usage:   "bump version in files with regex patterns",
+		Version: version,
+		Flags: []cli.Flag{
+			&cli.StringSliceFlag{
+				Name: "file", Aliases: []string{"f"},
+				Usage:    "target file",
+				Required: true,
+			},
+			&cli.StringFlag{
+				Name: "pattern", Aliases: []string{"p"},
+				Usage:    "regexp pattern with a capture group for the version",
+				Required: true,
+			},
+			&cli.BoolFlag{
+				Name: "write", Aliases: []string{"w"},
+				Usage: "write result to file instead of stdout",
+			},
+			&cli.BoolFlag{
+				Name: "yes", Aliases: []string{"y"},
+				Usage: "skip prompt and use patch (for non-interactive environments)",
+			},
+		},
+		Action: func(_ context.Context, cmd *cli.Command) error {
+			var (
+				majorDelta uint64
+				minorDelta uint64
+				patchDelta uint64
+				exact      string
+				showOnly   bool
+				prompt     bool
+			)
+
+			switch cmd.Args().First() {
+			case "major":
+				majorDelta = 1
+			case "minor":
+				minorDelta = 1
+			case "patch":
+				patchDelta = 1
+			case "up":
+				prompt = true
+			case "show":
+				showOnly = true
+			case "set":
+				if cmd.Args().Len() < 2 {
+					return errors.New("please specify a version to set")
+				}
+				exact = cmd.Args().Get(1)
+			default:
+				return fmt.Errorf("unknown subcommand %q", cmd.Args().First())
+			}
+
+			re, err := regexp.Compile(cmd.String("pattern"))
+			if err != nil {
+				return fmt.Errorf("invalid pattern: %w", err)
+			}
+			if re.NumSubexp() < 1 {
+				return errors.New("pattern must contain at least one capture group for the version")
+			}
+
+			pargs := processArgs{
+				pattern:    cmd.String("pattern"),
+				majorDelta: majorDelta,
+				minorDelta: minorDelta,
+				patchDelta: patchDelta,
+				exact:      exact,
+				showOnly:   showOnly,
+				prompt:     prompt,
+				re:         re,
+			}
+
+			for _, file := range cmd.StringSlice("file") {
+				pargs.file = file
+				if err := processFile(pargs, cmd); err != nil {
+					return fmt.Errorf("processing file %q failed: %w", file, err)
+				}
+			}
+
+			return nil
+		},
+	}
+
+	if err := cmd.Run(context.Background(), os.Args); err != nil {
+		log.Fatal(err)
 	}
 }
 
-func usage() {
-	fmt.Fprintf(os.Stderr, `Usage: bump (major|minor|patch|set <version>|show) -f <file> -p <pattern>
-
-Commands:
-  major             bump major version up
-  minor             bump minor version up
-  patch             bump patch version up
-  up                bump up with prompt
-  set <version>     set exact version (no increments)
-  show              only show the current version
-
-Flags:
-`)
-	flag.PrintDefaults()
-}
-
-func run(argv []string) error {
-	if len(argv) < 1 {
-		usage()
-		return errors.New("please specify subcommand")
-	}
-
-	var (
-		majorDelta uint64
-		minorDelta uint64
-		patchDelta uint64
-		exact      string
-		showOnly   bool
-		prompt     bool
-	)
-
-	parseOffset := 1
-	switch argv[0] {
-	case "major":
-		majorDelta = 1
-	case "minor":
-		minorDelta = 1
-	case "patch":
-		patchDelta = 1
-	case "up":
-		prompt = true
-	case "set":
-		if len(argv) < 2 {
-			return errors.New("please specify a version to set")
-		}
-		exact = argv[1]
-		parseOffset = 2
-	case "show":
-		showOnly = true
-	case "-v", "-version", "--version":
-		fmt.Println(version)
-		return nil
-	case "-h", "-help", "--help":
-		usage()
-		return nil
-	default:
-		return fmt.Errorf("unknown subcommand %q", argv[0])
-	}
-
-	fs := flag.NewFlagSet("bump", flag.ContinueOnError)
-	var (
-		file    string
-		pattern string
-		write   bool
-	)
-	var yes bool
-	fs.StringVar(&file, "f", "", "target file")
-	fs.StringVar(&pattern, "p", "", "regexp pattern with a capture group for the version")
-	fs.BoolVar(&write, "w", false, "write result to file instead of stdout")
-	fs.BoolVar(&yes, "y", false, "skip prompt and use patch (for non-interactive environments)")
-	if err := fs.Parse(argv[parseOffset:]); err != nil {
-		return err
-	}
-
-	if file == "" {
-		return errors.New("-f flag is required")
-	}
-	if pattern == "" {
-		return errors.New("-p flag is required")
-	}
-
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return fmt.Errorf("invalid pattern: %w", err)
-	}
-	if re.NumSubexp() < 1 {
-		return errors.New("pattern must contain at least one capture group for the version")
-	}
-
-	content, err := os.ReadFile(file)
+func processFile(pargs processArgs, cmd *cli.Command) error {
+	content, err := os.ReadFile(pargs.file)
 	if err != nil {
 		return err
 	}
 
-	loc := re.FindSubmatchIndex(content)
+	loc := pargs.re.FindSubmatchIndex(content)
 	if loc == nil {
 		return errors.New("pattern did not match")
 	}
@@ -124,31 +138,31 @@ func run(argv []string) error {
 	// loc[2], loc[3] are the start and end of the first capture group
 	currentVersion := string(content[loc[2]:loc[3]])
 
-	if showOnly {
+	if pargs.showOnly {
 		fmt.Println(currentVersion)
 		return nil
 	}
 
-	if prompt {
-		result, err := promptTarget(currentVersion, file)
+	if pargs.prompt {
+		result, err := promptTarget(currentVersion, pargs.file)
 		if err != nil {
-			if !yes {
+			if !cmd.Bool("yes") {
 				return err
 			}
-			patchDelta = 1
+			pargs.patchDelta = 1
 		} else {
 			switch result {
 			case promptResultPatch:
-				patchDelta = 1
+				pargs.patchDelta = 1
 			case promptResultMinor:
-				minorDelta = 1
+				pargs.minorDelta = 1
 			case promptResultMajor:
-				majorDelta = 1
+				pargs.majorDelta = 1
 			}
 		}
 	}
 
-	newVersion, err := bumpVersion(currentVersion, majorDelta, minorDelta, patchDelta, exact)
+	newVersion, err := bumpVersion(currentVersion, pargs)
 	if err != nil {
 		return fmt.Errorf("version bump failed: %w", err)
 	}
@@ -158,23 +172,22 @@ func run(argv []string) error {
 	result = append(result, []byte(newVersion)...)
 	result = append(result, content[loc[3]:]...)
 
-	if write {
-		if err := os.WriteFile(file, result, 0644); err != nil {
+	if cmd.Bool("write") {
+		if err := os.WriteFile(pargs.file, result, 0644); err != nil {
 			return err
 		}
 		fmt.Println(newVersion)
 	} else {
-		os.Stdout.Write(result)
+		fmt.Println(string(result))
 	}
-
 	return nil
 }
 
-func bumpVersion(version string, majorDelta, minorDelta, patchDelta uint64, exact string) (string, error) {
-	if exact != "" {
-		ev, err := semver.StrictNewVersion(exact)
+func bumpVersion(version string, pargs processArgs) (string, error) {
+	if pargs.exact != "" {
+		ev, err := semver.StrictNewVersion(pargs.exact)
 		if err != nil {
-			return "", fmt.Errorf("invalid version %q: %w", exact, err)
+			return "", fmt.Errorf("invalid version %q: %w", pargs.exact, err)
 		}
 		if v, err := semver.StrictNewVersion(version); err == nil {
 			if !ev.GreaterThan(v) {
@@ -189,16 +202,16 @@ func bumpVersion(version string, majorDelta, minorDelta, patchDelta uint64, exac
 		return "", fmt.Errorf("invalid current version %q: %w", version, err)
 	}
 
-	if majorDelta > 0 {
-		for i := uint64(0); i < majorDelta; i++ {
+	if pargs.majorDelta > 0 {
+		for i := uint64(0); i < pargs.majorDelta; i++ {
 			*v = v.IncMajor()
 		}
-	} else if minorDelta > 0 {
-		for i := uint64(0); i < minorDelta; i++ {
+	} else if pargs.minorDelta > 0 {
+		for i := uint64(0); i < pargs.minorDelta; i++ {
 			*v = v.IncMinor()
 		}
-	} else if patchDelta > 0 {
-		for i := uint64(0); i < patchDelta; i++ {
+	} else if pargs.patchDelta > 0 {
+		for i := uint64(0); i < pargs.patchDelta; i++ {
 			*v = v.IncPatch()
 		}
 	}
@@ -265,7 +278,12 @@ func promptTarget(currentVersion, target string) (promptResult, error) {
 
 	items := make([]string, len(candidates))
 	for i, c := range candidates {
-		newVersion, err := bumpVersion(currentVersion, c.delta[0], c.delta[1], c.delta[2], "")
+		newVersion, err := bumpVersion(currentVersion, processArgs{
+			majorDelta: c.delta[0],
+			minorDelta: c.delta[1],
+			patchDelta: c.delta[2],
+			exact:      "",
+		})
 		if err != nil {
 			return promptResultNone, err
 		}

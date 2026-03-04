@@ -4,14 +4,14 @@ import "testing"
 
 func TestBumpVersion(t *testing.T) {
 	tests := []struct {
-		name       string
-		version    string
-		major      uint64
-		minor      uint64
-		patch      uint64
-		exact      string
-		want       string
-		wantErr    bool
+		name    string
+		version string
+		major   uint64
+		minor   uint64
+		patch   uint64
+		exact   string
+		want    string
+		wantErr bool
 	}{
 		{"patch", "1.2.3", 0, 0, 1, "", "1.2.4", false},
 		{"minor", "1.2.3", 0, 1, 0, "", "1.3.0", false},
@@ -24,7 +24,12 @@ func TestBumpVersion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := bumpVersion(tt.version, tt.major, tt.minor, tt.patch, tt.exact)
+			got, err := bumpVersion(tt.version, processArgs{
+				majorDelta: tt.major,
+				minorDelta: tt.minor,
+				patchDelta: tt.patch,
+				exact:      tt.exact,
+			})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("bumpVersion() error = %v, wantErr %v", err, tt.wantErr)
 				return

@@ -1,0 +1,64 @@
+version: '3'
+
+vars:
+  PROGRAM: bump
+  SHELL: '{{if eq .OS "Windows_NT"}}powershell{{end}}'
+  BIN_DIR: bin
+
+  LINUX: '{{.BIN_DIR}}/{{.PROGRAM}}_linux_amd64'
+  WINDOWS: '{{.BIN_DIR}}/{{.PROGRAM}}_windows_amd64.exe'
+
+tasks:
+  default:
+    desc: Build the bump project
+    cmds:
+      - task: build
+
+  build:
+    desc: 'Build the bump project'
+    deps: [vet]
+    cmds:
+      - task: build-linux
+      - task: build-windows
+
+  build-linux:
+    desc: Build the Linux binary
+    cmds:
+      - GOOS=linux GOARCH=amd64 go build -o {{.LINUX}}
+    internal: true
+
+  build-windows:
+    desc: Build the Windows binary
+    cmds:
+      - GOOS=windows GOARCH=amd64 go build -o {{.WINDOWS}}
+    internal: true
+
+  vet:
+    desc: Vet the code
+    deps: [fmt]
+    cmds:
+      - go vet ./...
+
+  fmt:
+    desc: Fmt the code
+    cmds:
+      - go fmt ./...
+
+  integration-test:
+    desc: Run tests
+    deps: [docker-up]
+    cmds:
+      - go run ./cmd/{{.PROGRAM}} --hostname=${HOSTNAME} --ports="28960" --loglevel=trace --ratelimit=5
+      - docker compose down
+
+  docker-up:
+    desc: Run the Docker compose stack
+    cmds:
+      - docker-compose up -d
+      - sleep 3
+    internal: true
+
+  clean:
+    desc: Clean the build artifacts
+    cmds:
+      - '{{.SHELL}} rm -r {{.BIN_DIR}}'
