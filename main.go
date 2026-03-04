@@ -20,7 +20,6 @@ const version = "0.0.5"
 
 type processArgs struct {
 	file       string
-	pattern    string
 	majorDelta uint64
 	minorDelta uint64
 	patchDelta uint64
@@ -98,7 +97,6 @@ func main() {
 			}
 
 			pargs := processArgs{
-				pattern:    cmd.String("pattern"),
 				majorDelta: majorDelta,
 				minorDelta: minorDelta,
 				patchDelta: patchDelta,
