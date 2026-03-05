@@ -6,13 +6,28 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"runtime/debug"
+	"strings"
 
 	"github.com/charmbracelet/log"
 	"github.com/onyx-and-iris/bump"
 	"github.com/urfave/cli/v3"
 )
 
-const version = "0.0.5"
+var version string // Version holds the application version, set at build time using ldflags.
+
+// versionFromBuild retrieves the version information from the build metadata.
+func versionFromBuild() string {
+	if version != "" {
+		return version
+	}
+
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "(unable to read version)"
+	}
+	return strings.Split(info.Main.Version, "-")[0]
+}
 
 type fileData struct {
 	filePath     string
@@ -37,7 +52,7 @@ func main() {
 	cmd := &cli.Command{
 		Name:    "bump",
 		Usage:   "bump version in files with regex patterns",
-		Version: version,
+		Version: versionFromBuild(),
 		Flags: []cli.Flag{
 			&cli.StringSliceFlag{
 				Name: "file", Aliases: []string{"f"},

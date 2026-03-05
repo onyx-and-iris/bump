@@ -7,6 +7,8 @@ vars:
 
   LINUX: '{{.BIN_DIR}}/{{.PROGRAM}}_linux_amd64'
   WINDOWS: '{{.BIN_DIR}}/{{.PROGRAM}}_windows_amd64.exe'
+  VERSION:
+    sh: 'git describe --tags $(git rev-list --tags --max-count=1)'
 
 tasks:
   default:
@@ -24,13 +26,13 @@ tasks:
   build-linux:
     desc: Build the Linux binary
     cmds:
-      - GOOS=linux GOARCH=amd64 go build -o {{.LINUX}} ./cmd/{{.PROGRAM}}
+      - GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version={{.VERSION}}" -o {{.LINUX}}  ./cmd/{{.PROGRAM}}
     internal: true
 
   build-windows:
     desc: Build the Windows binary
     cmds:
-      - GOOS=windows GOARCH=amd64 go build -o {{.WINDOWS}} ./cmd/{{.PROGRAM}}
+      - GOOS=windows GOARCH=amd64 go build -ldflags "-X main.version={{.VERSION}}" -o {{.WINDOWS}} ./cmd/{{.PROGRAM}}
     internal: true
 
   vet:
