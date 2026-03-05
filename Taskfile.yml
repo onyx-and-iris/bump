@@ -24,13 +24,13 @@ tasks:
   build-linux:
     desc: Build the Linux binary
     cmds:
-      - GOOS=linux GOARCH=amd64 go build -o {{.LINUX}}
+      - GOOS=linux GOARCH=amd64 go build -o {{.LINUX}} ./cmd/{{.PROGRAM}}
     internal: true
 
   build-windows:
     desc: Build the Windows binary
     cmds:
-      - GOOS=windows GOARCH=amd64 go build -o {{.WINDOWS}}
+      - GOOS=windows GOARCH=amd64 go build -o {{.WINDOWS}} ./cmd/{{.PROGRAM}}
     internal: true
 
   vet:
