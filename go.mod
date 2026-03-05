@@ -1,4 +1,4 @@
-module github.com/mattn/bump
+module github.com/onyx-and-iris/bump
 
 go 1.25.6
 

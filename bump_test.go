@@ -1,4 +1,4 @@
-package main
+package bump
 
 import "testing"
 
@@ -24,11 +24,11 @@ func TestBumpVersion(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := bumpVersion(tt.version, processArgs{
-				majorDelta: tt.major,
-				minorDelta: tt.minor,
-				patchDelta: tt.patch,
-				exact:      tt.exact,
+			got, err := Version(tt.version, &Config{
+				MajorDelta: tt.major,
+				MinorDelta: tt.minor,
+				PatchDelta: tt.patch,
+				Exact:      tt.exact,
 			})
 			if (err != nil) != tt.wantErr {
 				t.Errorf("bumpVersion() error = %v, wantErr %v", err, tt.wantErr)
