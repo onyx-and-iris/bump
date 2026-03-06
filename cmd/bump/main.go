@@ -127,7 +127,7 @@ func main() {
 				Action: createVersionBumpActionFn(&bump.Config{PatchDelta: 1}),
 			},
 			{
-				Name:  "exact",
+				Name: "exact", Aliases: []string{"set"},
 				Usage: "set exact version (e.g. 1.2.3)",
 				Arguments: []cli.Argument{
 					&cli.StringArg{
