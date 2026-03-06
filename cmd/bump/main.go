@@ -145,7 +145,8 @@ func main() {
 				Flags: []cli.Flag{
 					&cli.BoolFlag{
 						Name: "yes", Aliases: []string{"y"},
-						Usage: "skip prompt and use patch (for non-interactive environments)",
+						Usage:   "skip prompt and use patch (for non-interactive environments)",
+						Sources: cli.EnvVars("BUMP_CLI_PROMPT_YES"),
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
