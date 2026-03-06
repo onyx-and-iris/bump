@@ -9,8 +9,6 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/table"
 	"github.com/charmbracelet/log"
 	"github.com/onyx-and-iris/bump"
 	"github.com/urfave/cli/v3"
@@ -278,66 +276,10 @@ func showResults(cmd *cli.Command, resultChan <-chan fileResult) error {
 		headers = []string{"File", "Current Version", "New Version"}
 	}
 
-	t := table.New().
-		Border(lipgloss.RoundedBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("#C7D2FE"))).
-		Headers(headers...).
-		StyleFunc(func(row, col int) lipgloss.Style {
-			style := lipgloss.NewStyle().Padding(0, 1)
-
-			if row == table.HeaderRow {
-				return style.Bold(true).Foreground(lipgloss.Color("#5B73E8"))
-			}
-			isEvenRow := row%2 == 0
-
-			switch col {
-			case 0:
-				if isEvenRow {
-					style = style.Foreground(lipgloss.Color("#6B7FD7"))
-				} else {
-					style = style.Foreground(lipgloss.Color("#8A9AE3"))
-				}
-			case 1:
-				if len(headers) == 4 {
-					if isEvenRow {
-						style = style.Foreground(lipgloss.Color("#9CA3F0")).Italic(true)
-					} else {
-						style = style.Foreground(lipgloss.Color("#B5C2F5")).Italic(true)
-					}
-				} else {
-					if isEvenRow {
-						style = style.Foreground(lipgloss.Color("#5B73E8"))
-					} else {
-						style = style.Foreground(lipgloss.Color("#7A8DED"))
-					}
-					style = style.Align(lipgloss.Center)
-				}
-			case 2:
-				if len(headers) == 4 {
-					if isEvenRow {
-						style = style.Foreground(lipgloss.Color("#5B73E8"))
-					} else {
-						style = style.Foreground(lipgloss.Color("#7A8DED"))
-					}
-				} else {
-					if isEvenRow {
-						style = style.Foreground(lipgloss.Color("#4F68E0"))
-					} else {
-						style = style.Foreground(lipgloss.Color("#6A7FE6"))
-					}
-				}
-				style = style.Align(lipgloss.Center)
-			case 3:
-				if isEvenRow {
-					style = style.Foreground(lipgloss.Color("#4F68E0"))
-				} else {
-					style = style.Foreground(lipgloss.Color("#6A7FE6"))
-				}
-				style = style.Align(lipgloss.Center)
-			}
-
-			return style
-		})
+	t, err := NewStyledTable(headers)
+	if err != nil {
+		return fmt.Errorf("error creating table: %w", err)
+	}
 
 	var errors []error
 	var successCount int
@@ -349,22 +291,22 @@ func showResults(cmd *cli.Command, resultChan <-chan fileResult) error {
 		} else {
 			if result.newVersion != "" {
 				if cmd.Bool("print-pattern") {
-					t.Row(result.filePath, result.pattern, result.currentVersion, result.newVersion)
+					t.MustAddRow(result.filePath, result.pattern, result.currentVersion, result.newVersion)
 				} else {
-					t.Row(result.filePath, result.currentVersion, result.newVersion)
+					t.MustAddRow(result.filePath, result.currentVersion, result.newVersion)
 				}
 			} else {
 				if cmd.Bool("print-pattern") {
-					t.Row(result.filePath, result.pattern, result.currentVersion, "—")
+					t.MustAddRow(result.filePath, result.pattern, result.currentVersion, "—")
 				} else {
-					t.Row(result.filePath, result.currentVersion, "—")
+					t.MustAddRow(result.filePath, result.currentVersion, "—")
 				}
 			}
 			successCount++
 		}
 	}
 	if successCount > 0 {
-		fmt.Println(t.String())
+		fmt.Println(t.Render())
 	}
 
 	if len(errors) > 0 && successCount > 0 {
