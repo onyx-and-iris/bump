@@ -9,6 +9,8 @@ import (
 	"runtime/debug"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"github.com/charmbracelet/log"
 	"github.com/onyx-and-iris/bump"
 	"github.com/urfave/cli/v3"
@@ -30,18 +32,20 @@ func versionFromBuild() string {
 }
 
 type fileData struct {
-	filePath     string
-	pattern      string
-	content      []byte
-	startIndex   int
-	endIndex     int
-	currentValue string
+	filePath       string
+	pattern        string
+	content        []byte
+	startIndex     int
+	endIndex       int
+	currentVersion string
 }
 
 type fileResult struct {
-	file       string
-	newVersion string
-	err        error
+	filePath       string
+	pattern        string
+	currentVersion string
+	newVersion     string
+	err            error
 }
 
 func main() {
@@ -80,6 +84,11 @@ func main() {
 				Name: "write", Aliases: []string{"w"},
 				Usage:   "write result to file instead of stdout",
 				Sources: cli.EnvVars("BUMP_CLI_WRITE"),
+			},
+			&cli.BoolFlag{
+				Name: "print-pattern", Aliases: []string{"pp"},
+				Usage:   "include the regex pattern in the output table",
+				Sources: cli.EnvVars("BUMP_CLI_PRINT_PATTERN"),
 			},
 			&cli.StringFlag{
 				Name: "loglevel", Aliases: []string{"l"},
@@ -159,24 +168,12 @@ func main() {
 						return fmt.Errorf("error getting current version: %w", err)
 					}
 
-					result, err := promptTarget(info.currentValue, info.filePath)
+					result, err := promptTarget(info.currentVersion, info.filePath)
 					if err != nil {
 						return fmt.Errorf("error prompting user: %w", err)
 					}
-
-					var config *bump.Config
-					switch result {
-					case promptResultPatch:
-						config = &bump.Config{PatchDelta: 1}
-					case promptResultMinor:
-						config = &bump.Config{MinorDelta: 1}
-					case promptResultMajor:
-						config = &bump.Config{MajorDelta: 1}
-					default:
-						return errors.New("invalid prompt result")
-					}
-
-					return createVersionBumpAction(config)(ctx, cmd)
+					bumpActionFn := createVersionBumpAction(result)
+					return bumpActionFn(ctx, cmd)
 				},
 			},
 		},
@@ -203,12 +200,12 @@ func currentVersionFromFile(file string, re *regexp.Regexp) (fileData, error) {
 	start, end := loc[2], loc[3]
 
 	return fileData{
-		filePath:     file,
-		pattern:      re.String(),
-		content:      content,
-		startIndex:   start,
-		endIndex:     end,
-		currentValue: string(content[start:end]),
+		filePath:       file,
+		pattern:        re.String(),
+		content:        content,
+		startIndex:     start,
+		endIndex:       end,
+		currentVersion: string(content[start:end]),
 	}, nil
 }
 
@@ -222,45 +219,34 @@ func createVersionBumpAction(config *bump.Config) cli.ActionFunc {
 			go func(file string) {
 				info, err := currentVersionFromFile(file, re)
 				if err != nil {
-					resultChan <- fileResult{file: file, err: err}
+					resultChan <- fileResult{filePath: file, err: err}
 					return
 				}
 
 				if config == nil {
-					fmt.Println(info.currentValue)
-					resultChan <- fileResult{file: file, err: nil}
+					resultChan <- fileResult{filePath: file, pattern: info.pattern, currentVersion: info.currentVersion, err: nil}
 					return
 				}
 
-				newVersion, err := bump.Version(info.currentValue, config)
+				newVersion, err := bump.Version(info.currentVersion, config)
 				if err != nil {
-					resultChan <- fileResult{file: info.filePath, err: fmt.Errorf("error bumping version in file %q: %w", info.filePath, err)}
+					resultChan <- fileResult{filePath: info.filePath, err: fmt.Errorf("error bumping version in file %q: %w", info.filePath, err)}
 					return
 				}
 
 				if cmd.Bool("write") {
 					if err := writeToFile(info, newVersion); err != nil {
-						resultChan <- fileResult{file: info.filePath, err: fmt.Errorf("error writing file %q: %w", info.filePath, err)}
+						resultChan <- fileResult{filePath: info.filePath, err: fmt.Errorf("error writing file %q: %w", info.filePath, err)}
 						return
 					}
 					log.Debugf("updated file %q to version %s", info.filePath, newVersion)
 				}
 
-				resultChan <- fileResult{file: info.filePath, newVersion: newVersion, err: nil}
+				resultChan <- fileResult{filePath: info.filePath, pattern: info.pattern, currentVersion: info.currentVersion, newVersion: newVersion, err: nil}
 			}(file)
 		}
 
-		if config != nil {
-			return showResults(cmd, resultChan)
-		}
-
-		for range numFiles {
-			result := <-resultChan
-			if result.err != nil {
-				return result.err
-			}
-		}
-		return nil
+		return showResults(cmd, resultChan)
 	}
 }
 
@@ -277,11 +263,78 @@ func showResults(cmd *cli.Command, resultChan <-chan fileResult) error {
 	results := make(map[string]fileResult)
 	for range cmd.StringSlice("file") {
 		result := <-resultChan
-		results[result.file] = result
+		results[result.filePath] = result
 	}
 
 	var errors []error
 	var successCount int
+	var headers []string
+	if cmd.Bool("print-pattern") {
+		headers = []string{"File", "Pattern", "Current Version", "New Version"}
+	} else {
+		headers = []string{"File", "Current Version", "New Version"}
+	}
+
+	t := table.New().
+		Border(lipgloss.RoundedBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("#C7D2FE"))).
+		Headers(headers...).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			style := lipgloss.NewStyle().Padding(0, 1)
+
+			if row == table.HeaderRow {
+				return style.Bold(true).Foreground(lipgloss.Color("#5B73E8"))
+			}
+			isEvenRow := row%2 == 0
+
+			switch col {
+			case 0:
+				if isEvenRow {
+					style = style.Foreground(lipgloss.Color("#6B7FD7"))
+				} else {
+					style = style.Foreground(lipgloss.Color("#8A9AE3"))
+				}
+			case 1:
+				if len(headers) == 4 {
+					if isEvenRow {
+						style = style.Foreground(lipgloss.Color("#9CA3F0")).Italic(true)
+					} else {
+						style = style.Foreground(lipgloss.Color("#B5C2F5")).Italic(true)
+					}
+				} else {
+					if isEvenRow {
+						style = style.Foreground(lipgloss.Color("#5B73E8"))
+					} else {
+						style = style.Foreground(lipgloss.Color("#7A8DED"))
+					}
+					style = style.Align(lipgloss.Center)
+				}
+			case 2:
+				if len(headers) == 4 {
+					if isEvenRow {
+						style = style.Foreground(lipgloss.Color("#5B73E8"))
+					} else {
+						style = style.Foreground(lipgloss.Color("#7A8DED"))
+					}
+				} else {
+					if isEvenRow {
+						style = style.Foreground(lipgloss.Color("#4F68E0"))
+					} else {
+						style = style.Foreground(lipgloss.Color("#6A7FE6"))
+					}
+				}
+				style = style.Align(lipgloss.Center)
+			case 3:
+				if isEvenRow {
+					style = style.Foreground(lipgloss.Color("#4F68E0"))
+				} else {
+					style = style.Foreground(lipgloss.Color("#6A7FE6"))
+				}
+				style = style.Align(lipgloss.Center)
+			}
+
+			return style
+		})
 
 	for _, file := range cmd.StringSlice("file") {
 		result := results[file]
@@ -289,10 +342,23 @@ func showResults(cmd *cli.Command, resultChan <-chan fileResult) error {
 			errors = append(errors, fmt.Errorf("%s: %w", file, result.err))
 		} else {
 			if result.newVersion != "" {
-				fmt.Println(result.newVersion)
+				if cmd.Bool("print-pattern") {
+					t.Row(result.filePath, result.pattern, result.currentVersion, result.newVersion)
+				} else {
+					t.Row(result.filePath, result.currentVersion, result.newVersion)
+				}
+			} else {
+				if cmd.Bool("print-pattern") {
+					t.Row(result.filePath, result.pattern, result.currentVersion, "—")
+				} else {
+					t.Row(result.filePath, result.currentVersion, "—")
+				}
 			}
 			successCount++
 		}
+	}
+	if successCount > 0 {
+		fmt.Println(t.String())
 	}
 
 	if len(errors) > 0 && successCount > 0 {

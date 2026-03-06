@@ -40,59 +40,45 @@ func (e *escInterceptReader) Close() error {
 	return e.r.Close()
 }
 
-type promptResult int
-
-const (
-	promptResultNone promptResult = iota
-	promptResultPatch
-	promptResultMinor
-	promptResultMajor
-)
-
-func promptTarget(currentVersion, target string) (promptResult, error) {
+func promptTarget(currentVersion, target string) (*bump.Config, error) {
 	t, err := tty.Open()
 	if err != nil {
-		return promptResultNone, err
+		return nil, err
 	}
 	defer t.Close()
 
 	candidates := []struct {
 		name   string
-		delta  [3]uint64 // major, minor, patch
-		result promptResult
+		config *bump.Config
 	}{
-		{"patch", [3]uint64{0, 0, 1}, promptResultPatch},
-		{"minor", [3]uint64{0, 1, 0}, promptResultMinor},
-		{"major", [3]uint64{1, 0, 0}, promptResultMajor},
+		{"patch", &bump.Config{PatchDelta: 1}},
+		{"minor", &bump.Config{MinorDelta: 1}},
+		{"major", &bump.Config{MajorDelta: 1}},
 	}
 
 	items := make([]string, len(candidates))
 	for i, c := range candidates {
-		config := &bump.Config{
-			MajorDelta: c.delta[0],
-			MinorDelta: c.delta[1],
-			PatchDelta: c.delta[2],
-		}
-		newVersion, err := bump.Version(currentVersion, config)
+		newVersion, err := bump.Version(currentVersion, c.config)
 		if err != nil {
-			return promptResultNone, err
+			return nil, err
 		}
 		items[i] = fmt.Sprintf("%s (%s -> %s)", c.name, currentVersion, newVersion)
 	}
 
 	stdin := newEscInterceptReader(t.Input())
 	p := promptui.Select{
-		Label:    "Bump up " + target,
-		HideHelp: true,
-		Items:    items,
-		Stdin:    stdin,
-		Stdout:   t.Output(),
+		Label:        "Bump up " + target,
+		HideHelp:     true,
+		Items:        items,
+		Stdin:        stdin,
+		Stdout:       t.Output(),
+		HideSelected: true,
 	}
 
 	index, _, err := p.Run()
 	if err != nil {
-		return promptResultNone, err
+		return nil, err
 	}
 
-	return candidates[index].result, nil
+	return candidates[index].config, nil
 }
