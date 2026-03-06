@@ -38,4 +38,4 @@ go.work.sum
 
 # End of ignr
 
-test-*.txt
+test-*

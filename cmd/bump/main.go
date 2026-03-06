@@ -31,21 +31,23 @@ func versionFromBuild() string {
 	return strings.Split(info.Main.Version, "-")[0]
 }
 
-type fileData struct {
+type fileInfo struct {
 	filePath       string
 	pattern        string
-	content        []byte
-	startIndex     int
-	endIndex       int
 	currentVersion string
 }
 
+type fileData struct {
+	fileInfo
+	content    []byte
+	startIndex int
+	endIndex   int
+}
+
 type fileResult struct {
-	filePath       string
-	pattern        string
-	currentVersion string
-	newVersion     string
-	err            error
+	fileInfo
+	newVersion string
+	err        error
 }
 
 func main() {
@@ -201,12 +203,14 @@ func currentVersionFromFile(file string, re *regexp.Regexp) (fileData, error) {
 	start, end := loc[2], loc[3]
 
 	return fileData{
-		filePath:       file,
-		pattern:        re.String(),
-		content:        content,
-		startIndex:     start,
-		endIndex:       end,
-		currentVersion: string(content[start:end]),
+		fileInfo: fileInfo{
+			filePath:       file,
+			pattern:        re.String(),
+			currentVersion: string(content[start:end]),
+		},
+		content:    content,
+		startIndex: start,
+		endIndex:   end,
 	}, nil
 }
 
@@ -220,30 +224,30 @@ func createVersionBumpActionFn(config *bump.Config) cli.ActionFunc {
 			go func(file string) {
 				info, err := currentVersionFromFile(file, re)
 				if err != nil {
-					resultChan <- fileResult{filePath: file, err: err}
+					resultChan <- fileResult{fileInfo: fileInfo{filePath: file}, err: err}
 					return
 				}
 
 				if config == nil {
-					resultChan <- fileResult{filePath: file, pattern: info.pattern, currentVersion: info.currentVersion, err: nil}
+					resultChan <- fileResult{fileInfo: info.fileInfo, err: nil}
 					return
 				}
 
 				newVersion, err := bump.Version(info.currentVersion, config)
 				if err != nil {
-					resultChan <- fileResult{filePath: info.filePath, err: fmt.Errorf("error bumping version in file %q: %w", info.filePath, err)}
+					resultChan <- fileResult{fileInfo: info.fileInfo, err: fmt.Errorf("error bumping version in file %q: %w", info.filePath, err)}
 					return
 				}
 
 				if cmd.Bool("write") {
 					if err := writeToFile(info, newVersion); err != nil {
-						resultChan <- fileResult{filePath: info.filePath, err: fmt.Errorf("error writing file %q: %w", info.filePath, err)}
+						resultChan <- fileResult{fileInfo: info.fileInfo, err: fmt.Errorf("error writing file %q: %w", info.filePath, err)}
 						return
 					}
 					log.Debugf("updated file %q to version %s", info.filePath, newVersion)
 				}
 
-				resultChan <- fileResult{filePath: info.filePath, pattern: info.pattern, currentVersion: info.currentVersion, newVersion: newVersion, err: nil}
+				resultChan <- fileResult{fileInfo: info.fileInfo, newVersion: newVersion, err: nil}
 			}(file)
 		}
 
