@@ -109,22 +109,22 @@ func main() {
 			{
 				Name:   "show",
 				Usage:  "show current version without bumping",
-				Action: createVersionBumpAction(nil),
+				Action: createVersionBumpActionFn(nil),
 			},
 			{
 				Name:   "major",
 				Usage:  "bump major version",
-				Action: createVersionBumpAction(&bump.Config{MajorDelta: 1}),
+				Action: createVersionBumpActionFn(&bump.Config{MajorDelta: 1}),
 			},
 			{
 				Name:   "minor",
 				Usage:  "bump minor version",
-				Action: createVersionBumpAction(&bump.Config{MinorDelta: 1}),
+				Action: createVersionBumpActionFn(&bump.Config{MinorDelta: 1}),
 			},
 			{
 				Name:   "patch",
 				Usage:  "bump patch version",
-				Action: createVersionBumpAction(&bump.Config{PatchDelta: 1}),
+				Action: createVersionBumpActionFn(&bump.Config{PatchDelta: 1}),
 			},
 			{
 				Name:  "exact",
@@ -135,7 +135,7 @@ func main() {
 					},
 				},
 				Action: func(ctx context.Context, cmd *cli.Command) error {
-					bumpActionFn := createVersionBumpAction(&bump.Config{Exact: cmd.StringArg("version")})
+					bumpActionFn := createVersionBumpActionFn(&bump.Config{Exact: cmd.StringArg("version")})
 					return bumpActionFn(ctx, cmd)
 				},
 			},
@@ -157,7 +157,8 @@ func main() {
 
 					if cmd.Bool("yes") {
 						config := &bump.Config{PatchDelta: 1}
-						return createVersionBumpAction(config)(ctx, cmd)
+						bumpActionFn := createVersionBumpActionFn(config)
+						return bumpActionFn(ctx, cmd)
 					}
 
 					info, err := currentVersionFromFile(
@@ -168,11 +169,11 @@ func main() {
 						return fmt.Errorf("error getting current version: %w", err)
 					}
 
-					result, err := promptTarget(info.currentVersion, info.filePath)
+					config, err := promptTarget(info.currentVersion, info.filePath)
 					if err != nil {
 						return fmt.Errorf("error prompting user: %w", err)
 					}
-					bumpActionFn := createVersionBumpAction(result)
+					bumpActionFn := createVersionBumpActionFn(config)
 					return bumpActionFn(ctx, cmd)
 				},
 			},
@@ -209,7 +210,7 @@ func currentVersionFromFile(file string, re *regexp.Regexp) (fileData, error) {
 	}, nil
 }
 
-func createVersionBumpAction(config *bump.Config) cli.ActionFunc {
+func createVersionBumpActionFn(config *bump.Config) cli.ActionFunc {
 	return func(ctx context.Context, cmd *cli.Command) error {
 		numFiles := len(cmd.StringSlice("file"))
 		resultChan := make(chan fileResult, numFiles)
