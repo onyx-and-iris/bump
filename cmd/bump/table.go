@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 )
@@ -22,9 +20,9 @@ type styledTable struct {
 // NewStyledTable creates a new table with the standard styling used in bump CLI.
 // Accepts either 3 or 4 headers: ["File", "Current Version", "New Version"] or
 // ["File", "Pattern", "Current Version", "New Version"]
-func NewStyledTable(headers []string) (Table, error) {
+func newStyledTable(headers []string) Table {
 	if len(headers) != 3 && len(headers) != 4 {
-		return nil, fmt.Errorf("headers must contain exactly 3 or 4 elements")
+		panic("headers must contain exactly 3 or 4 elements")
 	}
 
 	t := table.New().
@@ -91,7 +89,7 @@ func NewStyledTable(headers []string) (Table, error) {
 	return &styledTable{
 		table:   t,
 		headers: headers,
-	}, nil
+	}
 }
 
 // MustAddRow adds a row to the table and panics if the number of columns does not match the number of headers

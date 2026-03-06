@@ -277,10 +277,7 @@ func showResults(cmd *cli.Command, resultChan <-chan fileResult) error {
 		headers = []string{"File", "Current Version", "New Version"}
 	}
 
-	t, err := NewStyledTable(headers)
-	if err != nil {
-		return fmt.Errorf("error creating table: %w", err)
-	}
+	t := newStyledTable(headers)
 
 	var errors []error
 	var successCount int
