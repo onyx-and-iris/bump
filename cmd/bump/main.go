@@ -267,8 +267,6 @@ func showResults(cmd *cli.Command, resultChan <-chan fileResult) error {
 		results[result.filePath] = result
 	}
 
-	var errors []error
-	var successCount int
 	var headers []string
 	if cmd.Bool("print-pattern") {
 		headers = []string{"File", "Pattern", "Current Version", "New Version"}
@@ -336,6 +334,9 @@ func showResults(cmd *cli.Command, resultChan <-chan fileResult) error {
 
 			return style
 		})
+
+	var errors []error
+	var successCount int
 
 	for _, file := range cmd.StringSlice("file") {
 		result := results[file]
