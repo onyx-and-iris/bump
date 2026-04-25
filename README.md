@@ -102,6 +102,14 @@ bump set 2.0.0 -w -f pyproject.toml -p 'version\s*=\s*"(\d+\.\d+\.\d+)"'
 bump show -f Cargo.toml -p 'version\s*=\s*"(\d+\.\d+\.\d+)"'
 ```
 
+## Shell Completion
+
+```console
+bump completion [shell]
+```
+
+Currently supported shells are *bash*, *fish*, *pwsh*, *zsh*.
+
 ## License
 
 MIT

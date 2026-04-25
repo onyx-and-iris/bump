@@ -105,6 +105,7 @@ func main() {
 			log.SetLevel(level)
 			return ctx, nil
 		},
+		EnableShellCompletion: true,
 		Commands: []*cli.Command{
 			{
 				Name:   "show",
