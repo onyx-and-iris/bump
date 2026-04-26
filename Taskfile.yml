@@ -1,5 +1,8 @@
 version: '3'
 
+includes:
+  man: Taskfile.man.yml
+
 vars:
   PROGRAM: bump
   SHELL: '{{if eq .OS "Windows_NT"}}powershell{{end}}'
@@ -18,7 +21,7 @@ tasks:
 
   build:
     desc: 'Build the bump project'
-    deps: [vet]
+    deps: [ vet ]
     cmds:
       - task: build-linux
       - task: build-windows
@@ -26,18 +29,20 @@ tasks:
   build-linux:
     desc: Build the Linux binary
     cmds:
-      - GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version={{.VERSION}}" -o {{.LINUX}}  ./cmd/{{.PROGRAM}}
+      - GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version={{.VERSION}}"
+        -o {{.LINUX}}  ./cmd/{{.PROGRAM}}
     internal: true
 
   build-windows:
     desc: Build the Windows binary
     cmds:
-      - GOOS=windows GOARCH=amd64 go build -ldflags "-X main.version={{.VERSION}}" -o {{.WINDOWS}} ./cmd/{{.PROGRAM}}
+      - GOOS=windows GOARCH=amd64 go build -ldflags "-X
+        main.version={{.VERSION}}" -o {{.WINDOWS}} ./cmd/{{.PROGRAM}}
     internal: true
 
   vet:
     desc: Vet the code
-    deps: [fmt]
+    deps: [ fmt ]
     cmds:
       - go vet ./...
 

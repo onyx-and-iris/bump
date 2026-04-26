@@ -39,3 +39,5 @@ go.work.sum
 # End of ignr
 
 test-*
+
+bump.1

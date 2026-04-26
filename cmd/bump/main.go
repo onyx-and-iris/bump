@@ -10,7 +10,9 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/log"
+	"github.com/muesli/roff"
 	"github.com/onyx-and-iris/bump"
+	mufcli "github.com/onyx-and-iris/mango-ufcli"
 	"github.com/urfave/cli/v3"
 )
 
@@ -95,6 +97,19 @@ func main() {
 				Usage:   "Set the logging level (debug, info, warn, error, fatal, panic).",
 				Sources: cli.EnvVars("BUMP_CLI_LOGLEVEL"),
 				Value:   "info",
+			},
+			&cli.BoolFlag{
+				Name: "man", Aliases: []string{"m"},
+				Usage: "print man page and exit",
+				Action: func(ctx context.Context, cmd *cli.Command, value bool) error {
+					manpage, err := mufcli.NewManPage(1, cmd)
+					if err != nil {
+						return fmt.Errorf("error generating man page: %w", err)
+					}
+					fmt.Println(manpage.Build(roff.NewDocument()))
+					os.Exit(0)
+					return nil
+				},
 			},
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
