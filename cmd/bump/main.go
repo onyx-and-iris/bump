@@ -93,10 +93,10 @@ func main() {
 				Sources: cli.EnvVars("BUMP_CLI_PRINT_PATTERN"),
 			},
 			&cli.StringFlag{
-				Name: "loglevel", Aliases: []string{"l"},
+				Name: "log-level", Aliases: []string{"l"},
 				Usage:   "Set the logging level (debug, info, warn, error, fatal, panic).",
-				Sources: cli.EnvVars("BUMP_CLI_LOGLEVEL"),
-				Value:   "info",
+				Sources: cli.EnvVars("BUMP_CLI_LOG_LEVEL"),
+				Value:   "warn",
 			},
 			&cli.BoolFlag{
 				Name: "man", Aliases: []string{"m"},
@@ -113,7 +113,7 @@ func main() {
 			},
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
-			level, err := log.ParseLevel(cmd.String("loglevel"))
+			level, err := log.ParseLevel(cmd.String("log-level"))
 			if err != nil {
 				return nil, fmt.Errorf("invalid log level: %w", err)
 			}
