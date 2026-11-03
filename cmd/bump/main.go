@@ -92,6 +92,11 @@ func main() {
 				Usage:   "include the regex pattern in the output table",
 				Sources: cli.EnvVars("BUMP_CLI_PRINT_PATTERN"),
 			},
+			&cli.BoolFlag{
+				Name:    "next-only",
+				Usage:   "only show the next version without writing to file",
+				Sources: cli.EnvVars("BUMP_CLI_NEXT_ONLY"),
+			},
 			&cli.StringFlag{
 				Name: "log-level", Aliases: []string{"l"},
 				Usage:   "Set the logging level (debug, info, warn, error, fatal, panic).",
@@ -284,6 +289,13 @@ func showResults(cmd *cli.Command, resultChan <-chan fileResult) error {
 	for range cmd.StringSlice("file") {
 		result := <-resultChan
 		results[result.filePath] = result
+	}
+
+	if cmd.Bool("next-only") {
+		for _, result := range results {
+			fmt.Println(result.newVersion)
+		}
+		return nil
 	}
 
 	var headers []string
